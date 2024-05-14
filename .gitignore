@@ -1,0 +1,35 @@
+# Ignore the GTZan folder
+GTZan/
+
+# Ignore node_modules directory
+node_modules/
+
+# Ignore logs
+logs
+*.log
+npm-debug.log*
+
+# Ignore OS generated files
+.DS_Store
+Thumbs.db
+
+# Ignore environment variable files
+.env
+
+# Ignore build directories and files
+dist/
+build/
+
+# Ignore IDE-specific files
+.vscode/
+.idea/
+
+# Ignore compiled files
+*.o
+*.out
+*.class
+
+# Ignore temporary files
+*.tmp
+*.swp
+*.bak
