@@ -1,6 +1,15 @@
 import os
 import librosa
 import pandas as pd
+from pydub import AudioSegment
+import tempfile
+
+# Function to convert MP3 to WAV
+def convert_mp3_to_wav(mp3_file):
+    sound = AudioSegment.from_mp3(mp3_file)
+    wav_file = tempfile.mktemp(suffix='.wav')
+    sound.export(wav_file, format="wav")
+    return wav_file
 
 # Function to extract features from an audio file
 def extract_features(audio_file):
@@ -60,18 +69,19 @@ def extract_features(audio_file):
 def process_audio_folder(folder_path):
     results = []
     for filename in os.listdir(folder_path):
-        if filename.endswith('.wav'):
+        if filename.endswith('.wav') or filename.endswith('.mp3'):
             file_path = os.path.join(folder_path, filename)
+            if filename.endswith('.mp3'):
+                file_path = convert_mp3_to_wav(file_path)
             features = extract_features(file_path)
             results.append(features)
     return results
 
 # Folder containing audio files
-folder_path = '/Users/isaiah/Desktop/Career/Projects/music-genre-detector/GTZan/genres_original/blues'
-
+folder_path = '/Users/simonrisk/Desktop/sound_project/Data/genres_original/blues'
 # Process audio files
 results = process_audio_folder(folder_path)
 
 # Write results to a CSV file
 df = pd.DataFrame(results)
-df.to_csv('/Users/isaiah/Desktop/Career/Projects/music-genre-detector/audio_features.csv', index=False)
+df.to_csv('/Users/simonrisk/Desktop/sound_project/music-genre-detector-main/audio_features.csv', index=False)
