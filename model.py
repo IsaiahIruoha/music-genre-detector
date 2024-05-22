@@ -93,7 +93,7 @@ def process_audio_folder(folder_path, genre_label):
 genres = ["blues", "classical", "country", "disco", "hiphop", "jazz", "metal", "pop", "reggae", "rock"]
 
 # Base folder containing genre subfolders
-base_folder_path = '/Users/simonrisk/Desktop/music-genre-detector-main/genres_original'
+base_folder_path = '/Users/isaiah/Desktop/Career/Projects/music-genre-detector/GTZan/genres_original'
 
 # Collect results from all genres
 all_results = []
@@ -109,7 +109,7 @@ for genre in genres:
 # Write all results to a single CSV file
 print("Writing results to CSV file...")
 df = pd.DataFrame(all_results)
-csv_file_path = '/Users/simonrisk/Desktop/music-genre-detector-main/all_genres_audio_features.csv'
+csv_file_path = '/Users/isaiah/Desktop/Career/Projects/music-genre-detector/all_genres_audio_features.csv'
 df.to_csv(csv_file_path, index=False)
 print("CSV file generation completed.")
 
