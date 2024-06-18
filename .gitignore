@@ -33,3 +33,6 @@ build/
 *.tmp
 *.swp
 *.bak
+
+# spectrograms
+spectrograms
