@@ -36,3 +36,7 @@ build/
 
 # spectrograms
 spectrograms
+
+
+# too large for github 
+outputs/rf_best_model.pkl
