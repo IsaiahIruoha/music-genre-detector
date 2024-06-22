@@ -34,8 +34,5 @@ build/
 *.swp
 *.bak
 
-# too large for github 
-outputs/rf_best_model.pkl
-
 # input files and songs
 inputs/
