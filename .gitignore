@@ -36,3 +36,5 @@ build/
 
 # input files and songs
 inputs/
+
+music-genre-detector.code-workspace
