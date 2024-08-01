@@ -1,24 +1,22 @@
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 import sounddevice as sd
 import numpy as np
 import threading
 import pandas as pd
 import librosa
-import soundfile as sf
-from pydub import AudioSegment
 import os
 import joblib
+from pydub import AudioSegment
 
 app = Flask(__name__)
 CORS(app)
 
-# Variable to hold the current status
 current_status = "Not Listening"
 recording = False
 audio_thread = None
 recording_number = 1
-predicted_genres = []  # Add this line
+predicted_genres = []
 
 # Load models and other necessary files
 rf_best_model = joblib.load('/Users/simonrisk/Desktop/audioInsightFlaskApp/outputs/rf_best_model.pkl')
@@ -28,6 +26,7 @@ knn_best_model = joblib.load('/Users/simonrisk/Desktop/audioInsightFlaskApp/outp
 logreg_best_model = joblib.load('/Users/simonrisk/Desktop/audioInsightFlaskApp/outputs/logreg_best_model.pkl')
 scaler = joblib.load('/Users/simonrisk/Desktop/audioInsightFlaskApp/outputs/scaler.pkl')
 encoder = joblib.load('/Users/simonrisk/Desktop/audioInsightFlaskApp/outputs/encoder.pkl')
+
 
 def extract_features_from_segment(y, sr, start_time, end_time):
     segment = y[start_time:end_time]
@@ -71,9 +70,6 @@ def extract_features_from_segment(y, sr, start_time, end_time):
 def load_audio(file_path):
     try:
         y, sr = librosa.load(file_path, sr=None)
-    except sf.LibsndfileError:
-        print(f"LibsndfileError: {file_path}")
-        return None, None
     except Exception as e:
         print(f"Error loading {file_path}: {e}")
         return None, None
@@ -124,37 +120,30 @@ def evaluate_model_on_external_data(model, X_ext):
     return y_pred
 
 def predict_genre(features):
-    # Ensure all columns except 'filename', 'start', and 'end' are converted to numeric
     numeric_features = features.drop(columns=['filename', 'start', 'end']).apply(pd.to_numeric, errors='coerce')
-    
-    # Replace any NaNs that might have resulted from coercion to numeric
     numeric_features = numeric_features.fillna(0)
     
-    # Scale the features
     X_ext = scaler.transform(numeric_features)
     
-    # Evaluate each model and gather predictions
     rf_predictions = evaluate_model_on_external_data(rf_best_model, X_ext)
     svm_predictions = evaluate_model_on_external_data(svm_best_model, X_ext)
     gb_predictions = evaluate_model_on_external_data(gb_best_model, X_ext)
     knn_predictions = evaluate_model_on_external_data(knn_best_model, X_ext)
     logreg_predictions = evaluate_model_on_external_data(logreg_best_model, X_ext)
 
-    # Aggregate predictions
     all_predictions = np.vstack([rf_predictions, svm_predictions, gb_predictions, knn_predictions, logreg_predictions])
     final_predictions = [np.bincount(row).argmax() for row in all_predictions.T]
 
-    # Map predicted numbers to genre names
     final_predictions_genre = [encoder.classes_[pred] for pred in final_predictions]
     
     return final_predictions_genre
 
 def record_audio():
-    global recording, recording_number, predicted_genres  # Add predicted_genres here
+    global recording, recording_number, predicted_genres
     filename = f"recorded_audio_{recording_number}.wav"
-    sample_rate = 44100  # 44.1kHz sample rate
-    channels = 1  # Mono
-    dtype = 'int16'  # 16-bit audio
+    sample_rate = 44100
+    channels = 1
+    dtype = 'int16'
 
     audio_data = []
 
@@ -172,39 +161,30 @@ def record_audio():
     audio_segment = AudioSegment(
         audio_array.tobytes(),
         frame_rate=sample_rate,
-        sample_width=audio_array.dtype.itemsize,  # Automatically detects sample width
+        sample_width=audio_array.dtype.itemsize,
         channels=channels
     )
 
-    # Normalize the audio to reduce background noise
     audio_segment = audio_segment.normalize()
 
     audio_segment.export(filename, format="wav")
     print(f"Saved recording to {filename}")
     
-    # Process the recorded audio and create a CSV
     csv_filename = f"audio_features_{recording_number}.csv"
     create_csv_from_audio(filename, csv_filename)
 
-    # Predict the genre
     features_df = pd.read_csv(csv_filename)
     genres = predict_genre(features_df)
     print("Predicted Genres: ", genres)
     
-    # Update the global variable
-    predicted_genres = genres  # Add this line
-
+    predicted_genres = genres
+    
     recording_number += 1
-
-@app.route('/')
-def home():
-    return render_template('index.html', status=current_status)
 
 @app.route('/api/action', methods=['POST'])
 def handle_action():
     global current_status, recording, audio_thread
     data = request.json
-    # Update the current status based on the received data
     if data.get("isListening"):
         current_status = "Listening"
         if not recording:
@@ -219,7 +199,6 @@ def handle_action():
                 audio_thread.join()
                 audio_thread = None
     print(current_status)
-    # Send a response back to the client
     return jsonify({"message": "Action received!", "data": data}), 200
 
 @app.route('/api/status', methods=['GET'])
@@ -227,7 +206,6 @@ def get_status():
     global current_status
     return jsonify({"status": current_status}), 200
 
-# Add this endpoint to fetch the predicted genres
 @app.route('/api/genres', methods=['GET'])
 def get_genres():
     global predicted_genres
