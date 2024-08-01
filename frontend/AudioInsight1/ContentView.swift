@@ -1,17 +1,77 @@
 import SwiftUI
 import UniformTypeIdentifiers
 import PythonKit
+import Combine
+
+
+
+
+/*
+ assume the Flask server is running locally on http://localhost:5000 and has an endpoint /api/action to handle the button press.
+ */
+
+
 
 struct ContentView: View {
     @State private var isListening = false
+    @State private var alertTitle: String? // For showing alert messages
+    @State private var showAlert = false // To control showing of alert
 
     var body: some View {
         VStack {
             NavBar(isListening: $isListening)  // Pass isListening to NavBar
+            // Display the alert
+            if showAlert, let alertTitle = alertTitle {
+                Text(alertTitle)
+                    .font(.headline)
+                    .padding()
+                    .background(Color.black.opacity(0.75))
+                    .foregroundColor(.white)
+                    .cornerRadius(10)
+                    .transition(.opacity)
+                    .animation(.easeInOut, value: showAlert)
+            }
+        }
+        .onAppear {
+            fetchPredictedGenre()
 
         }
     }
-}
+    func fetchPredictedGenre() {
+        guard let url = URL(string: "http://127.0.0.1:5000/api/genres") else { return }
+        let task = URLSession.shared.dataTask(with: url) { data, response, error in
+            if let error = error {
+                print("Error fetching predicted genre: \(error)")
+                return
+            }
+            guard let data = data else { return }
+            do {
+                if let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
+                   let genres = json["genres"] as? [String] {
+                    DispatchQueue.main.async {
+                        showAlert(for: genres.first ?? "Unknown Genre")
+                    }
+                } else {
+                    print("Invalid JSON structure")
+                }
+            } catch {
+                print("Error parsing JSON: \(error)")
+            }
+        }
+        task.resume()
+    }
+
+        
+        func showAlert(for genre: String) {
+            alertTitle = "Predicted Genre: \(genre)"
+            showAlert = true
+            // Hide the alert after a few seconds
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                showAlert = false
+            }
+        }
+    }
+
 
 struct MainView: View {
     @Binding var isListening: Bool
@@ -96,8 +156,7 @@ struct MainStatusView: View {
     var body: some View {
         VStack(spacing: 8) {
             if !isListening {
-
-                }
+                // Add any additional UI elements here if needed
             }
 
             Text(isListening ? "Listening..." : "Waiting...")
@@ -108,11 +167,7 @@ struct MainStatusView: View {
                 withAnimation {
                     isListening.toggle()
                 }
-                if isListening {
-                    //startRecording()
-                } else {
-                    //stopRecording()
-                } 
+                sendActionToBackend(isListening: isListening)
             }) {
                 Image(systemName: imageName) // Use imageName here
                     .renderingMode(.template)
@@ -127,26 +182,68 @@ struct MainStatusView: View {
         }
     }
 
-    func startRecording() {
-        let sys = Python.import("sys")
-        sys.path.append("/Users/simonrisk/Documents/AudioInsight1/AudioInsight1")
-        let soundCapture = Python.import("soundCapture")
+    func sendActionToBackend(isListening: Bool) {
+        guard let url = URL(string: "http://127.0.0.1:5000/api/action") else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        DispatchQueue.global(qos: .background).async {
-            soundCapture.start_recording()
-        }
+        let body: [String: Any] = ["isListening": isListening]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                print("Error: \(error)")
+                return
+            }
+            if let response = response as? HTTPURLResponse {
+                print("Status code: \(response.statusCode)")
+            }
+            if let data = data {
+                if let jsonResponse = try? JSONSerialization.jsonObject(with: data, options: []) {
+                    print("Response JSON: \(jsonResponse)")
+                }
+            }
+        }.resume()
     }
+}
 
-    func stopRecording() {
-        let sys = Python.import("sys")
-        sys.path.append("/Users/simonrisk/Documents/AudioInsight1/AudioInsight1")
-        let soundCapture = Python.import("soundCapture")
+class NetworkManager: ObservableObject {
+    @Published var genres: [String] = []
 
-        DispatchQueue.global(qos: .background).async {
-            soundCapture.stop_recording("/Users/simonrisk/Documents/AudioInsight1/AudioInsight1/files")
+    func fetchGenres() {
+        guard let url = URL(string: "http://127.0.0.1:5000/api/genres") else {
+            print("Invalid URL")
+            return
         }
-    }
 
+        let task = URLSession.shared.dataTask(with: url) { data, response, error in
+            if let error = error {
+                print("Error fetching genres: \(error)")
+                return
+            }
+
+            guard let data = data else {
+                print("No data received")
+                return
+            }
+
+            do {
+                let genreResponse = try JSONDecoder().decode(GenreResponse.self, from: data)
+                DispatchQueue.main.async {
+                    self.genres = genreResponse.genres
+                }
+            } catch {
+                print("Error decoding JSON: \(error)")
+            }
+        }
+
+        task.resume()
+    }
+}
+struct GenreResponse: Codable {
+    let genres: [String]
+}
 
 
 struct ListenButton: View {
