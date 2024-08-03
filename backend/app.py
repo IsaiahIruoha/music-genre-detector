@@ -180,6 +180,10 @@ def record_audio():
     predicted_genres = genres
     
     recording_number += 1
+    
+    # New: Send the genre prediction back to Swift
+    with open('predicted_genre.txt', 'w') as f:
+        f.write(genres[0])  # Save the first predicted genre
 
 @app.route('/api/action', methods=['POST'])
 def handle_action():
