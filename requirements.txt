@@ -37,6 +37,7 @@ fsspec==2024.2.0
 gast==0.5.4
 google-pasta==0.2.0
 grpcio==1.64.1
+gunicorn==22.0.0
 h5py==3.10.0
 idna @ file:///private/var/folders/sy/f16zz6x50xz3113nwtb9bvq00000gp/T/abs_00jf0h4zbt/croot/idna_1666125573348/work
 imageio==2.34.1
