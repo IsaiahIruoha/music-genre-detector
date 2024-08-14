@@ -4,7 +4,7 @@ import PythonKit
 import Combine
 
 func sendActionToBackend(isListening: Bool) {
-    guard let url = URL(string: "http://127.0.0.1:5000/api/action") else { return }
+    guard let url = URL(string: "https://music-genre-detector.onrender.com/api/action") else { return }
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -50,6 +50,7 @@ struct ContentView: View {
                 
 
             }
+            
         }
     }
     
@@ -93,10 +94,14 @@ struct BackgroundView: View {
     @Binding var isListening: Bool
 
     var body: some View {
-        LinearGradient(gradient: Gradient(colors: [.black , .gray]),
-                       startPoint: .topLeading,
-                       endPoint: .bottomTrailing)
+        VStack {
+            LinearGradient(gradient: Gradient(colors: [.black , .gray]),
+                           startPoint: .topLeading,
+                           endPoint: .bottomTrailing)
+            .frame(height: UIScreen.main.bounds.height * 0.885)
             .ignoresSafeArea()
+        }
+        .background(Color.white)
     }
 }
 
@@ -165,7 +170,7 @@ struct MainStatusView: View {
                 guard !self.isListening else { return }
                 
                 // Check if the genre prediction file exists
-                guard let url = URL(string: "http://127.0.0.1:5000/api/genres") else { return }
+                guard let url = URL(string: "https://music-genre-detector.onrender.com/api/genres") else { return }
                 
                 URLSession.shared.dataTask(with: url) { data, response, error in
                     if let error = error {
@@ -296,8 +301,8 @@ struct MusicNoteView: View {
 
 struct Page3View: View {
     @State private var selectedCategory: Category = .genre
-    @State private var genres = ["Rock", "Jazz", "Pop", "Metal", "HipHop", "Classical"]
-    @State private var auras = ["Aura1", "Aura2", "Aura3", "Aura4", "Aura5", "Aura6"]
+    @State private var genres = ["Rock", "Jazz", "Pop", "Metal", "HipHop", "Classical", "Blues", "Country", "Reggae", "Disco"]
+    @State private var auras = ["Aura1", "Aura2", "Aura3", "Aura4", "Aura5", "Aura6", "Aura7"]
     @State private var selectedItem: CategoryItem? = nil
     @State private var showDescription = false
 
@@ -356,7 +361,7 @@ struct CategoryItemView: View {
         VStack {
             Rectangle()
                 .fill(Color.red)
-                .frame(height: 100)
+                .frame(width: 100, height: 150)
                 .cornerRadius(10)
                 .onTapGesture {
                     selectedItem = CategoryItem(id: name, name: name)

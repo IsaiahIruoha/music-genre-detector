@@ -13,7 +13,7 @@ struct NavBar: View {
                 }
                 .tag(0)
 
-            UploadFileView()  // Use the new UploadFileView here
+            UploadFileView()
                 .tabItem {
                     Image(systemName: "square.and.arrow.up")
                     Text("Page 2")
@@ -27,13 +27,14 @@ struct NavBar: View {
                 }
                 .tag(2)
 
-            SettingsView()  // Add the new settings view here
+            SettingsView()
                 .tabItem {
                     Image(systemName: "person")
                     Text("Page 4")
                 }
                 .tag(3)
         }
+        .background(Color.black)
     }
 }
 
