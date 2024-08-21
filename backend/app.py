@@ -13,8 +13,9 @@ current_status = "Not Listening"
 genres = []
 
 def resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    # Remove the check for _MEIPASS since you're not using PyInstaller
     base_path = os.path.dirname(os.path.abspath(__file__))
-    base_path = os.path.dirname(base_path)
     return os.path.join(base_path, relative_path)
 
 rf_best_model_path = resource_path('outputs/rf_best_model.pkl')
@@ -107,9 +108,23 @@ def extract_features(audio_file, segment_duration=10):
         print(f"Error extracting features from {audio_file}: {e}")
         return []
 
+# def process_audio_file(file_path):
+#     results = []
+#     if file_path.endswith('.wav'):
+#         features_list = extract_features(file_path)
+#         results.extend(features_list)
+#     return results
+
 def process_audio_file(file_path):
     results = []
-    if file_path.endswith('.wav'):
+    if file_path.endswith('.wav') or file_path.endswith('.m4a'):
+        # Convert .m4a to .wav if necessary
+        if file_path.endswith('.m4a'):
+            wav_file_path = file_path.replace('.m4a', '.wav')
+            audio = AudioSegment.from_file(file_path, format='m4a')
+            audio.export(wav_file_path, format='wav')
+            file_path = wav_file_path
+        
         features_list = extract_features(file_path)
         results.extend(features_list)
     return results
@@ -129,42 +144,80 @@ def predict_genre(features):
     gb_predictions = evaluate_model_on_external_data(gb_best_model, X_ext)
     knn_predictions = evaluate_model_on_external_data(knn_best_model, X_ext)
     logreg_predictions = evaluate_model_on_external_data(logreg_best_model, X_ext)
+
+    all_predictions = np.vstack([rf_predictions, svm_predictions, gb_predictions, knn_predictions, logreg_predictions])
+    final_predictions = [np.bincount(row).argmax() for row in all_predictions.T]
+
+    final_predictions_genre = [encoder.classes_[pred] for pred in final_predictions]
     
-    predictions_df = pd.DataFrame({
-        'RF': rf_predictions,
-        'SVM': svm_predictions,
-        'GB': gb_predictions,
-        'KNN': knn_predictions,
-        'LogReg': logreg_predictions
-    })
+    return final_predictions_genre
+
+def record_audio():
+    global recording, recording_number, predicted_genres
+    filename = f"recorded_audio_{recording_number}.wav"
+    sample_rate = 44100
+    channels = 1
+    dtype = 'int16'
+
+    audio_data = []
+
+    def callback(indata, frames, time, status):
+        if status:
+            print(status)
+        audio_data.append(indata.copy())
+
+    with sd.InputStream(samplerate=sample_rate, channels=channels, dtype=dtype, callback=callback):
+        while recording:
+            sd.sleep(100)
+
+    audio_array = np.concatenate(audio_data, axis=0)
     
-    aggregated_per_segment = predictions_df.mode(axis=1)[0]
-    singular_final_prediction = int(aggregated_per_segment.mode()[0])
-    singular_final_prediction_genre = encoder.classes_[singular_final_prediction]
-    return [singular_final_prediction_genre]
+    audio_segment = AudioSegment(
+        audio_array.tobytes(),
+        frame_rate=sample_rate,
+        sample_width=audio_array.dtype.itemsize,
+        channels=channels
+    )
 
-@app.route('/api/upload', methods=['POST'])
-def upload_audio():
-    if 'file' not in request.files:
-        return jsonify({"error": "No file part"}), 400
+    audio_segment = audio_segment.normalize()
 
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({"error": "No selected file"}), 400
+    audio_segment.export(filename, format="wav")
+    print(f"Saved recording to {filename}")
+    
+    csv_filename = f"audio_features_{recording_number}.csv"
+    create_csv_from_audio(filename, csv_filename)
 
-    if file and (file.filename.endswith('.wav') or file.filename.endswith('.m4a')):
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_file:
-            file.save(temp_file.name)
-            temp_file_path = temp_file.name
+    features_df = pd.read_csv(csv_filename)
+    genres = predict_genre(features_df)
+    print("Predicted Genres: ", genres)
+    
+    predicted_genres = genres
+    
+    recording_number += 1
+    
+    # New: Send the genre prediction back to Swift
+    with open('predicted_genre.txt', 'w') as f:
+        f.write(genres[0])  # Save the first predicted genre
 
-        features_list = process_audio_file(temp_file_path)
-        global genres
-        genres = predict_genre(features_list)
-
-        os.remove(temp_file_path)
-        return jsonify({"genres": genres}), 200
-
-    return jsonify({"error": "Invalid file format"}), 400
+@app.route('/api/action', methods=['POST'])
+def handle_action():
+    global current_status, recording, audio_thread
+    data = request.json
+    if data.get("isListening"):
+        current_status = "Listening"
+        if not recording:
+            recording = True
+            audio_thread = threading.Thread(target=record_audio)
+            audio_thread.start()
+    else:
+        current_status = "Not Listening"
+        if recording:
+            recording = False
+            if audio_thread:
+                audio_thread.join()
+                audio_thread = None
+    print(current_status)
+    return jsonify({"message": "Action received!", "data": data}), 200
 
 @app.route('/api/status', methods=['GET'])
 def get_status():

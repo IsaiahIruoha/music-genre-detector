@@ -7,7 +7,7 @@ struct UploadFileView: View {
     @State private var showingAlert = false
 
     var body: some View {
-        VStack(spacing: 20) {
+        VStack {
             Text("Upload Options")
                 .font(.largeTitle)
                 .foregroundColor(.white)
@@ -30,12 +30,12 @@ struct UploadFileView: View {
             .sheet(isPresented: $showDocumentPicker) {
                 DocumentPickerView(isPresented: $showDocumentPicker)
             }
-
+            Spacer()
             Text("OR")
                 .font(.title)
                 .foregroundColor(.white)
-
-            VStack(alignment: .leading) {
+            Spacer()
+            VStack() {
                 Text("Enter YouTube Link")
                     .foregroundColor(.white)
 

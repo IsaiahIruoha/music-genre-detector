@@ -2,16 +2,95 @@ import SwiftUI
 import UniformTypeIdentifiers
 import PythonKit
 import Combine
+import AVFoundation
 
-func sendActionToBackend(isListening: Bool) {
-    guard let url = URL(string: "https://music-genre-detector.onrender.com/api/action") else { return }
+class AudioRecorder: NSObject, ObservableObject {
+    var audioRecorder: AVAudioRecorder?
+    let fileName = "audioRecording.m4a"
+    
+    func startRecording() {
+        let audioSession = AVAudioSession.sharedInstance()
+        do {
+            try audioSession.setCategory(.playAndRecord, mode: .default)
+            try audioSession.setActive(true)
+            
+//            let settings = [
+//                AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+//                AVSampleRateKey: 12000,
+//                AVNumberOfChannelsKey: 1,
+//                AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
+//            ]
+            
+            let settings = [
+                AVFormatIDKey: Int(kAudioFormatLinearPCM),
+                AVSampleRateKey: 44100,  // Standard sample rate for high-quality audio
+                AVNumberOfChannelsKey: 1, // Mono
+                AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
+            ]
+            
+            let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            let audioFileURL = documentsDirectory.appendingPathComponent(fileName)
+            
+            audioRecorder = try AVAudioRecorder(url: audioFileURL, settings: settings)
+            audioRecorder?.record()
+            print("Recording started")
+        } catch {
+            print("Failed to start recording: \(error)")
+        }
+    }
+
+    func stopRecording() {
+        audioRecorder?.stop()
+        audioRecorder = nil
+        print("Recording stopped")
+    }
+
+    
+    func getAudioFileURL() -> URL? {
+        let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        return documentsDirectory.appendingPathComponent(fileName)
+    }
+}
+
+func sendActionToBackend(isListening: Bool, audioFileURL: URL?) {
+    guard let url = URL(string: "http://10.253.194.118:8000/api/upload") else { return }
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
-    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-    let body: [String: Any] = ["isListening": isListening]
-    request.httpBody = try? JSONSerialization.data(withJSONObject: body)
-
+    
+    let boundary = UUID().uuidString
+    request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+    
+    var body = Data()
+    
+    body.append("--\(boundary)\r\n".data(using: .utf8)!)
+    body.append("Content-Disposition: form-data; name=\"isListening\"\r\n\r\n".data(using: .utf8)!)
+    body.append("\(isListening)\r\n".data(using: .utf8)!)
+    
+    if let audioFileURL = audioFileURL {
+        // Check if the file exists at the given path
+        if FileManager.default.fileExists(atPath: audioFileURL.path) {
+            print("File exists at \(audioFileURL.path)")
+        } else {
+            print("File does not exist at \(audioFileURL.path)")
+            return
+        }
+        
+        do {
+            let audioData = try Data(contentsOf: audioFileURL)
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(audioFileURL.lastPathComponent)\"\r\n".data(using: .utf8)!)
+            body.append("Content-Type: audio/m4a\r\n\r\n".data(using: .utf8)!)
+            body.append(audioData)
+            body.append("\r\n".data(using: .utf8)!)
+        } catch {
+            print("Error reading audio file data: \(error)")
+            return
+        }
+    }
+    
+    body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+    request.httpBody = body
+    
     URLSession.shared.dataTask(with: request) { data, response, error in
         if let error = error {
             print("Error: \(error)")
@@ -20,14 +99,11 @@ func sendActionToBackend(isListening: Bool) {
         if let response = response as? HTTPURLResponse {
             print("Status code: \(response.statusCode)")
         }
-        if let data = data {
-            if let jsonResponse = try? JSONSerialization.jsonObject(with: data, options: []) {
-                print("Response JSON: \(jsonResponse)")
-            }
+        if let data = data, let jsonResponse = try? JSONSerialization.jsonObject(with: data, options: []) {
+            print("Response JSON: \(jsonResponse)")
         }
     }.resume()
 }
-
 
 
 
@@ -119,9 +195,11 @@ struct ProductTextView: View {
 struct MainStatusView: View {
     @Binding var isListening: Bool
     @State private var predictedGenre: String = "Unknown"
-    var imageName: String // Add imageName as a parameter
+    @StateObject private var audioRecorder = AudioRecorder()
+    var imageName: String
     @State private var showDocumentPicker = false
     @State private var hasListened = 0
+    
     var body: some View {
         VStack(spacing: 8) {
             Text(isListening ? "Listening..." : "")
@@ -135,9 +213,14 @@ struct MainStatusView: View {
                     isListening.toggle()
                 }
                 if isListening {
+                    audioRecorder.startRecording()
                     hasListened += 1
+                } else {
+                    audioRecorder.stopRecording()
+                    sendActionToBackend(isListening: isListening, audioFileURL: audioRecorder.getAudioFileURL())
+
                 }
-                sendActionToBackend(isListening: isListening)
+                
             }) {
                 Image(systemName: imageName) // Use imageName here
                     .renderingMode(.template)
@@ -170,7 +253,7 @@ struct MainStatusView: View {
                 guard !self.isListening else { return }
                 
                 // Check if the genre prediction file exists
-                guard let url = URL(string: "https://music-genre-detector.onrender.com/api/genres") else { return }
+                guard let url = URL(string: "http://10.253.194.118:8000/api/genres") else { return }
                 
                 URLSession.shared.dataTask(with: url) { data, response, error in
                     if let error = error {
@@ -193,25 +276,6 @@ struct MainStatusView: View {
                 }.resume()
             }
         }
-    func startRecording() {
-        let sys = Python.import("sys")
-        sys.path.append("/Users/simonrisk/Documents/AudioInsight1/AudioInsight1")
-        let soundCapture = Python.import("soundCapture")
-        
-        DispatchQueue.global(qos: .background).async {
-            soundCapture.start_recording()
-        }
-    }
-    
-    func stopRecording() {
-        let sys = Python.import("sys")
-        sys.path.append("/Users/simonrisk/Documents/AudioInsight1/AudioInsight1")
-        let soundCapture = Python.import("soundCapture")
-        
-        DispatchQueue.global(qos: .background).async {
-            soundCapture.stop_recording("/Users/simonrisk/Documents/AudioInsight1/AudioInsight1/files")
-        }
-    }
     
 }
 
