@@ -14,10 +14,17 @@ class AudioRecorder: NSObject, ObservableObject {
             try audioSession.setCategory(.playAndRecord, mode: .default)
             try audioSession.setActive(true)
             
+//            let settings = [
+//                AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+//                AVSampleRateKey: 12000,
+//                AVNumberOfChannelsKey: 1,
+//                AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
+//            ]
+            
             let settings = [
-                AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
-                AVSampleRateKey: 12000,
-                AVNumberOfChannelsKey: 1,
+                AVFormatIDKey: Int(kAudioFormatLinearPCM),
+                AVSampleRateKey: 44100,  // Standard sample rate for high-quality audio
+                AVNumberOfChannelsKey: 1, // Mono
                 AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
             ]
             
@@ -46,37 +53,44 @@ class AudioRecorder: NSObject, ObservableObject {
 }
 
 func sendActionToBackend(isListening: Bool, audioFileURL: URL?) {
-    guard let url = URL(string: "http://127.0.0.1:8000/api/upload") else { return }
+    guard let url = URL(string: "http://10.253.194.118:8000/api/upload") else { return }
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
-
-    // Set the Content-Type to multipart/form-data with a boundary
+    
     let boundary = UUID().uuidString
     request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-
-    // Create the multipart form body
+    
     var body = Data()
     
-    // Add the isListening part
     body.append("--\(boundary)\r\n".data(using: .utf8)!)
     body.append("Content-Disposition: form-data; name=\"isListening\"\r\n\r\n".data(using: .utf8)!)
     body.append("\(isListening)\r\n".data(using: .utf8)!)
-
-    // Add the audio file part if available
-    if let audioFileURL = audioFileURL, let audioData = try? Data(contentsOf: audioFileURL) {
-        print("File size: \(audioData.count) bytes")
-        body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"audio\"; filename=\"\(audioFileURL.lastPathComponent)\"\r\n".data(using: .utf8)!)
-        body.append("Content-Type: audio/m4a\r\n\r\n".data(using: .utf8)!)
-        body.append(audioData)
-        body.append("\r\n".data(using: .utf8)!)
+    
+    if let audioFileURL = audioFileURL {
+        // Check if the file exists at the given path
+        if FileManager.default.fileExists(atPath: audioFileURL.path) {
+            print("File exists at \(audioFileURL.path)")
+        } else {
+            print("File does not exist at \(audioFileURL.path)")
+            return
+        }
+        
+        do {
+            let audioData = try Data(contentsOf: audioFileURL)
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(audioFileURL.lastPathComponent)\"\r\n".data(using: .utf8)!)
+            body.append("Content-Type: audio/m4a\r\n\r\n".data(using: .utf8)!)
+            body.append(audioData)
+            body.append("\r\n".data(using: .utf8)!)
+        } catch {
+            print("Error reading audio file data: \(error)")
+            return
+        }
     }
-
-    // End the body with the boundary
+    
     body.append("--\(boundary)--\r\n".data(using: .utf8)!)
-
     request.httpBody = body
-
+    
     URLSession.shared.dataTask(with: request) { data, response, error in
         if let error = error {
             print("Error: \(error)")
@@ -85,14 +99,11 @@ func sendActionToBackend(isListening: Bool, audioFileURL: URL?) {
         if let response = response as? HTTPURLResponse {
             print("Status code: \(response.statusCode)")
         }
-        if let data = data {
-            if let jsonResponse = try? JSONSerialization.jsonObject(with: data, options: []) {
-                print("Response JSON: \(jsonResponse)")
-            }
+        if let data = data, let jsonResponse = try? JSONSerialization.jsonObject(with: data, options: []) {
+            print("Response JSON: \(jsonResponse)")
         }
     }.resume()
 }
-
 
 
 
@@ -242,7 +253,7 @@ struct MainStatusView: View {
                 guard !self.isListening else { return }
                 
                 // Check if the genre prediction file exists
-                guard let url = URL(string: "http://127.0.0.1:8000/api/genres") else { return }
+                guard let url = URL(string: "http://10.253.194.118:8000/api/genres") else { return }
                 
                 URLSession.shared.dataTask(with: url) { data, response, error in
                     if let error = error {
