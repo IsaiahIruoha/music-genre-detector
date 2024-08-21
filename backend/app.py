@@ -1,41 +1,30 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import sounddevice as sd
-import numpy as np
-import threading
 import pandas as pd
 import librosa
 import os
 import joblib
-from pydub import AudioSegment
-import sys
-
+import tempfile
 
 app = Flask(__name__)
 CORS(app)
 
 current_status = "Not Listening"
-recording = False
-audio_thread = None
-recording_number = 1
-predicted_genres = []
+genres = []
 
 def resource_path(relative_path):
-    """ Get absolute path to resource, works for dev and for PyInstaller """
-    # Remove the check for _MEIPASS since you're not using PyInstaller
     base_path = os.path.dirname(os.path.abspath(__file__))
+    base_path = os.path.dirname(base_path)
     return os.path.join(base_path, relative_path)
 
-# Now, use the resource_path function to load your model and scaler
-rf_best_model_path = resource_path('outputs/rf_best_model.pkl')  # Updated path
-svm_best_model_path = resource_path('outputs/svm_best_model.pkl')  # Updated path
-gb_best_model_path = resource_path('outputs/gb_best_model.pkl')  # Updated path
-knn_best_model_path = resource_path('outputs/knn_best_model.pkl')  # Updated path
-logreg_best_model_path = resource_path('outputs/logreg_best_model.pkl')  # Updated path
-scaler_path = resource_path('outputs/scaler.pkl')  # Updated path
-encoder_path = resource_path('outputs/encoder.pkl')  # Updated path
+rf_best_model_path = resource_path('outputs/rf_best_model.pkl')
+svm_best_model_path = resource_path('outputs/svm_best_model.pkl')
+gb_best_model_path = resource_path('outputs/gb_best_model.pkl')
+knn_best_model_path = resource_path('outputs/knn_best_model.pkl')
+logreg_best_model_path = resource_path('outputs/logreg_best_model.pkl')
+scaler_path = resource_path('outputs/scaler.pkl')
+encoder_path = resource_path('outputs/encoder.pkl')
 
-# Load models and other necessary files
 rf_best_model = joblib.load(rf_best_model_path)
 svm_best_model = joblib.load(svm_best_model_path)
 gb_best_model = joblib.load(gb_best_model_path)
@@ -91,7 +80,7 @@ def load_audio(file_path):
         return None, None
     return y, sr
 
-def extract_features(audio_file, segment_duration=30):
+def extract_features(audio_file, segment_duration=10):
     try:
         y, sr = load_audio(audio_file)
         if y is None:
@@ -125,20 +114,14 @@ def process_audio_file(file_path):
         results.extend(features_list)
     return results
 
-def create_csv_from_audio(file_path, output_csv_path):
-    all_results = process_audio_file(file_path)
-    df = pd.DataFrame(all_results)
-    df.to_csv(output_csv_path, index=False)
-    print(f"CSV file saved to {output_csv_path}")
-
 def evaluate_model_on_external_data(model, X_ext):
     y_pred = model.predict(X_ext)
     return y_pred
 
 def predict_genre(features):
-    numeric_features = features.drop(columns=['filename', 'start', 'end']).apply(pd.to_numeric, errors='coerce')
+    numeric_features = pd.DataFrame(features).drop(columns=['filename', 'start', 'end']).apply(pd.to_numeric, errors='coerce')
     numeric_features = numeric_features.fillna(0)
-    
+
     X_ext = scaler.transform(numeric_features)
     
     rf_predictions = evaluate_model_on_external_data(rf_best_model, X_ext)
@@ -146,80 +129,42 @@ def predict_genre(features):
     gb_predictions = evaluate_model_on_external_data(gb_best_model, X_ext)
     knn_predictions = evaluate_model_on_external_data(knn_best_model, X_ext)
     logreg_predictions = evaluate_model_on_external_data(logreg_best_model, X_ext)
-
-    all_predictions = np.vstack([rf_predictions, svm_predictions, gb_predictions, knn_predictions, logreg_predictions])
-    final_predictions = [np.bincount(row).argmax() for row in all_predictions.T]
-
-    final_predictions_genre = [encoder.classes_[pred] for pred in final_predictions]
     
-    return final_predictions_genre
-
-def record_audio():
-    global recording, recording_number, predicted_genres
-    filename = f"recorded_audio_{recording_number}.wav"
-    sample_rate = 44100
-    channels = 1
-    dtype = 'int16'
-
-    audio_data = []
-
-    def callback(indata, frames, time, status):
-        if status:
-            print(status)
-        audio_data.append(indata.copy())
-
-    with sd.InputStream(samplerate=sample_rate, channels=channels, dtype=dtype, callback=callback):
-        while recording:
-            sd.sleep(100)
-
-    audio_array = np.concatenate(audio_data, axis=0)
+    predictions_df = pd.DataFrame({
+        'RF': rf_predictions,
+        'SVM': svm_predictions,
+        'GB': gb_predictions,
+        'KNN': knn_predictions,
+        'LogReg': logreg_predictions
+    })
     
-    audio_segment = AudioSegment(
-        audio_array.tobytes(),
-        frame_rate=sample_rate,
-        sample_width=audio_array.dtype.itemsize,
-        channels=channels
-    )
+    aggregated_per_segment = predictions_df.mode(axis=1)[0]
+    singular_final_prediction = int(aggregated_per_segment.mode()[0])
+    singular_final_prediction_genre = encoder.classes_[singular_final_prediction]
+    return [singular_final_prediction_genre]
 
-    audio_segment = audio_segment.normalize()
+@app.route('/api/upload', methods=['POST'])
+def upload_audio():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file part"}), 400
 
-    audio_segment.export(filename, format="wav")
-    print(f"Saved recording to {filename}")
-    
-    csv_filename = f"audio_features_{recording_number}.csv"
-    create_csv_from_audio(filename, csv_filename)
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"error": "No selected file"}), 400
 
-    features_df = pd.read_csv(csv_filename)
-    genres = predict_genre(features_df)
-    print("Predicted Genres: ", genres)
-    
-    predicted_genres = genres
-    
-    recording_number += 1
-    
-    # New: Send the genre prediction back to Swift
-    with open('predicted_genre.txt', 'w') as f:
-        f.write(genres[0])  # Save the first predicted genre
+    if file and (file.filename.endswith('.wav') or file.filename.endswith('.m4a')):
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_file:
+            file.save(temp_file.name)
+            temp_file_path = temp_file.name
 
-@app.route('/api/action', methods=['POST'])
-def handle_action():
-    global current_status, recording, audio_thread
-    data = request.json
-    if data.get("isListening"):
-        current_status = "Listening"
-        if not recording:
-            recording = True
-            audio_thread = threading.Thread(target=record_audio)
-            audio_thread.start()
-    else:
-        current_status = "Not Listening"
-        if recording:
-            recording = False
-            if audio_thread:
-                audio_thread.join()
-                audio_thread = None
-    print(current_status)
-    return jsonify({"message": "Action received!", "data": data}), 200
+        features_list = process_audio_file(temp_file_path)
+        global genres
+        genres = predict_genre(features_list)
+
+        os.remove(temp_file_path)
+        return jsonify({"genres": genres}), 200
+
+    return jsonify({"error": "Invalid file format"}), 400
 
 @app.route('/api/status', methods=['GET'])
 def get_status():
@@ -228,8 +173,8 @@ def get_status():
 
 @app.route('/api/genres', methods=['GET'])
 def get_genres():
-    global predicted_genres
-    return jsonify({"genres": predicted_genres}), 200
+    global genres
+    return jsonify({"genres": genres}), 200
 
 @app.route('/', methods=['GET'])
 def say_hello():
