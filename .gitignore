@@ -39,6 +39,6 @@ inputs/
 
 music-genre-detector.code-workspace
 
-.venv/
+venv/
 
 backend/backendEnv/
