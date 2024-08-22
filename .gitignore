@@ -42,3 +42,5 @@ music-genre-detector.code-workspace
 venv/
 
 backend/backendEnv/
+
+backend/__pycache__
