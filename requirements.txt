@@ -18,7 +18,7 @@ llvmlite==0.43.0
 MarkupSafe==2.1.5
 msgpack==1.0.8
 numba==0.60.0
-numpy==2.0.1
+numpy==1.26.4
 packaging==24.1
 pandas==2.2.2
 platformdirs==4.2.2
@@ -27,7 +27,7 @@ pycparser==2.22
 python-dateutil==2.9.0.post0
 pytz==2024.1
 requests==2.32.3
-scikit-learn==1.5.1
+scikit-learn==1.4.1.post1
 scipy==1.13.1
 six==1.16.0
 soundfile==0.12.1
