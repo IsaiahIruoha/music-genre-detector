@@ -8,7 +8,8 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     portaudio19-dev \
     libsndfile1-dev \
-    ffmpeg
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy the requirements.txt file into the container
 COPY backend/requirements.txt .
@@ -22,8 +23,8 @@ COPY backend/ .
 # Copy the outputs directory into the container
 COPY outputs /app/outputs  
 
-# Make port 8000 available to the world outside this container
+# Make the port available to the world outside this container
 EXPOSE 8000
 
 # Run the application
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:$PORT", "app:app"]
