@@ -153,13 +153,20 @@ def upload_audio():
         return jsonify({"error": "No selected file"}), 400
 
     if file and (file.filename.endswith('.wav') or file.filename.endswith('.m4a')):
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_file:
+        # Save the file with its original format
+        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as temp_file:
             file.save(temp_file.name)
             temp_file_path = temp_file.name
 
-        features_list = process_audio_file(temp_file_path)
-        global genres
-        genres = predict_genre(features_list)
+        # Ensure the file format is valid before processing
+        try:
+            features_list = process_audio_file(temp_file_path)
+            global genres
+            genres = predict_genre(features_list)
+        except Exception as e:
+            print(f"Error processing audio file: {e}")
+            os.remove(temp_file_path)
+            return jsonify({"error": "Error processing audio file"}), 500
 
         os.remove(temp_file_path)
         return jsonify({"genres": genres}), 200
