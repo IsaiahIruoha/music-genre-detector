@@ -23,8 +23,8 @@ COPY backend/ .
 # Copy the outputs directory into the container
 COPY outputs /app/outputs  
 
-# Make the port available to the world outside this container
+# Make port 8000 available to the world outside this container
 EXPOSE 8000
 
-# Run the application
-CMD ["gunicorn", "--bind", "0.0.0.0:$PORT", "app:app"]
+# Use the entrypoint to bind the correct port
+ENTRYPOINT ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT:-8000} app:app"]
