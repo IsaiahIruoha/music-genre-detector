@@ -204,6 +204,9 @@ def get_status():
 @app.route('/api/genres', methods=['GET'])
 def get_genres():
     global genres
+    global current_status
+    if current_status != "Not Listening":
+        genres = []  # Reset genres if status is "Listening"
     return jsonify({"genres": genres}), 200
 
 @app.route('/', methods=['GET'])
