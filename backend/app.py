@@ -6,16 +6,18 @@ import os
 import joblib
 import tempfile
 from pydub import AudioSegment
+import logging
 
 app = Flask(__name__)
 CORS(app)
 
-current_status = "Not Listening"
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+
 genres = []
 
 def resource_path(relative_path):
     base_path = os.path.dirname(os.path.abspath(__file__))
-    # base_path = os.path.dirname(base_path) add this line when not using docker
     return os.path.join(base_path, relative_path)
 
 rf_best_model_path = resource_path('outputs/rf_best_model.pkl')
@@ -26,13 +28,17 @@ logreg_best_model_path = resource_path('outputs/logreg_best_model.pkl')
 scaler_path = resource_path('outputs/scaler.pkl')
 encoder_path = resource_path('outputs/encoder.pkl')
 
-rf_best_model = joblib.load(rf_best_model_path)
-svm_best_model = joblib.load(svm_best_model_path)
-gb_best_model = joblib.load(gb_best_model_path)
-knn_best_model = joblib.load(knn_best_model_path)
-logreg_best_model = joblib.load(logreg_best_model_path)
-scaler = joblib.load(scaler_path)
-encoder = joblib.load(encoder_path)
+try:
+    rf_best_model = joblib.load(rf_best_model_path)
+    svm_best_model = joblib.load(svm_best_model_path)
+    gb_best_model = joblib.load(gb_best_model_path)
+    knn_best_model = joblib.load(knn_best_model_path)
+    logreg_best_model = joblib.load(logreg_best_model_path)
+    scaler = joblib.load(scaler_path)
+    encoder = joblib.load(encoder_path)
+except Exception as e:
+    logging.error(f"Error loading models or scaler: {e}")
+    raise
 
 def extract_features_from_segment(y, sr, start_time, end_time):
     segment = y[start_time:end_time]
@@ -77,7 +83,7 @@ def load_audio(file_path):
     try:
         y, sr = librosa.load(file_path, sr=None)
     except Exception as e:
-        print(f"Error loading {file_path}: {e}")
+        logging.error(f"Error loading {file_path}: {e}")
         return None, None
     return y, sr
 
@@ -96,16 +102,15 @@ def extract_features(audio_file, segment_duration=10):
             end = start + segment_length
             if end <= len(y):
                 segment_features = extract_features_from_segment(y, sr, start, end)
-                all_features = segment_features
-                all_features['filename'] = os.path.basename(audio_file)
-                all_features['start'] = start / sr
-                all_features['end'] = end / sr
-                features_list.append(all_features)
+                segment_features['filename'] = os.path.basename(audio_file)
+                segment_features['start'] = start / sr
+                segment_features['end'] = end / sr
+                features_list.append(segment_features)
 
         return features_list
 
     except Exception as e:
-        print(f"Error extracting features from {audio_file}: {e}")
+        logging.error(f"Error extracting features from {audio_file}: {e}")
         return []
 
 def process_audio_file(file_path):
@@ -116,8 +121,7 @@ def process_audio_file(file_path):
     return results
 
 def evaluate_model_on_external_data(model, X_ext):
-    y_pred = model.predict(X_ext)
-    return y_pred
+    return model.predict(X_ext)
 
 def predict_genre(features):
     numeric_features = pd.DataFrame(features).drop(columns=['filename', 'start', 'end']).apply(pd.to_numeric, errors='coerce')
@@ -138,21 +142,20 @@ def predict_genre(features):
         'KNN': knn_predictions,
         'LogReg': logreg_predictions
     })
-    
-    print("Predictions DataFrame:\n", predictions_df)
 
-    # Aggregate predictions
+    logging.info("Predictions DataFrame:\n%s", predictions_df)
+
     aggregated_per_segment = predictions_df.mode(axis=1)[0]
-    print("Aggregated Predictions per Segment:\n", aggregated_per_segment)
+    logging.info("Aggregated Predictions per Segment:\n%s", aggregated_per_segment)
 
-    # Determine the final singular prediction
     singular_final_prediction = int(aggregated_per_segment.mode()[0])
-    print("Singular Final Prediction (Index):\n", singular_final_prediction)
+    logging.info("Singular Final Prediction (Index):\n%s", singular_final_prediction)
     
     singular_final_prediction_genre = encoder.classes_[singular_final_prediction]
-    print("Singular Final Prediction Genre:\n", singular_final_prediction_genre)
+    logging.info("Singular Final Prediction Genre:\n%s", singular_final_prediction_genre)
     
     return [singular_final_prediction_genre]
+
 
 @app.route('/api/upload', methods=['POST'])
 def upload_audio():
@@ -196,17 +199,9 @@ def upload_audio():
 
     return jsonify({"error": "Invalid file format"}), 400
 
-@app.route('/api/status', methods=['GET'])
-def get_status():
-    global current_status
-    return jsonify({"status": current_status}), 200
-
 @app.route('/api/genres', methods=['GET'])
 def get_genres():
     global genres
-    global current_status
-    if current_status != "Not Listening":
-        genres = []  # Reset genres if status is "Listening"
     return jsonify({"genres": genres}), 200
 
 @app.route('/', methods=['GET'])
