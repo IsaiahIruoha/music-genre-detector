@@ -5,6 +5,7 @@ import librosa
 import os
 import joblib
 import tempfile
+from pydub import AudioSegment
 
 app = Flask(__name__)
 CORS(app)
@@ -157,6 +158,18 @@ def upload_audio():
         with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as temp_file:
             file.save(temp_file.name)
             temp_file_path = temp_file.name
+
+        # Convert .m4a to .wav if necessary
+        if file.filename.endswith('.m4a'):
+            wav_file_path = tempfile.NamedTemporaryFile(delete=False, suffix='.wav').name
+            try:
+                audio = AudioSegment.from_file(temp_file_path, format="m4a")
+                audio.export(wav_file_path, format="wav")
+                temp_file_path = wav_file_path  # Update the path to the converted file
+            except Exception as e:
+                print(f"Error converting m4a to wav: {e}")
+                os.remove(temp_file_path)
+                return jsonify({"error": "Error converting m4a to wav"}), 500
 
         # Ensure the file format is valid before processing
         try:
