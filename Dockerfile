@@ -26,5 +26,5 @@ COPY outputs /app/outputs
 # Make port 8000 available to the world outside this container
 EXPOSE 8000
 
-# Use the entrypoint to bind the correct port
-ENTRYPOINT ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT:-8000} app:app"]
+# Run the application with the correct port
+CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:$PORT app:app"]
