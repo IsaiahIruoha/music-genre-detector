@@ -139,9 +139,19 @@ def predict_genre(features):
         'LogReg': logreg_predictions
     })
     
+    print("Predictions DataFrame:\n", predictions_df)
+
+    # Aggregate predictions
     aggregated_per_segment = predictions_df.mode(axis=1)[0]
+    print("Aggregated Predictions per Segment:\n", aggregated_per_segment)
+
+    # Determine the final singular prediction
     singular_final_prediction = int(aggregated_per_segment.mode()[0])
+    print("Singular Final Prediction (Index):\n", singular_final_prediction)
+    
     singular_final_prediction_genre = encoder.classes_[singular_final_prediction]
+    print("Singular Final Prediction Genre:\n", singular_final_prediction_genre)
+    
     return [singular_final_prediction_genre]
 
 @app.route('/api/upload', methods=['POST'])
